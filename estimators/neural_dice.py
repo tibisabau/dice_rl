@@ -22,10 +22,11 @@ from tf_agents.specs import tensor_spec
 from tf_agents.policies import tf_policy
 from tf_agents.utils import common as tfagents_common
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, Union
-
-import dice_rl.data.dataset as dataset_lib
-import dice_rl.utils.common as common_lib
-import dice_rl.estimators.estimator as estimator_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import matplotlib.pyplot as plt
+import data.dataset as dataset_lib
+import utils.common as common_lib
+import estimators.estimator as estimator_lib
 
 
 class NeuralDice(object):
@@ -89,7 +90,15 @@ class NeuralDice(object):
     self._zeta_network = zeta_network
     self._zeta_network.create_variables()
     self._zero_reward = zero_reward
-
+    self.steps = []  # List of step numbers
+    self.nu_zero_values = []  # List of nu_zero values
+    self.lam_values = []  # List of lam values
+    self.dual_step_values = []  # List of dual_step values
+    self.constraint_values = []  # List of constraint values
+    self.preg_values = []  # List of preg values
+    self.dreg_values = []  # List of dreg values
+    self.lagrangian_values = []  # List of lagrangian values
+    self.overall_values = []  # List of overall values
     self._nu_optimizer = nu_optimizer
     self._zeta_optimizer = zeta_optimizer
     self._lam_optimizer = lam_optimizer
@@ -291,6 +300,7 @@ class NeuralDice(object):
             tfagents_timestep).action.log_prob(env_step.action)
         policy_ratio = tf.exp(target_log_probabilities -
                               env_step.get_log_probability())
+      print("ZETA: ", zeta * common_lib.reverse_broadcast(policy_ratio, zeta))
       return zeta * common_lib.reverse_broadcast(policy_ratio, zeta)
 
     def init_nu_fn(env_step, valid_steps):
@@ -317,7 +327,7 @@ class NeuralDice(object):
         by_steps=True,
         reward_fn=self._reward_fn,
         weight_fn=weight_fn)
-
+    
     tf.summary.scalar('nu_zero', nu_zero)
     tf.summary.scalar('lam', self._norm_regularizer * self._lam)
     tf.summary.scalar('dual_step', dual_step)
@@ -339,7 +349,24 @@ class NeuralDice(object):
              self._primal_regularizer * f_nu, 'dreg =',
              self._dual_regularizer * f_zeta, 'lagrangian =', lagrangian,
              'overall =', overall)
-
+    self.steps.append(tf.summary.experimental.get_step().numpy())
+    self.nu_zero_values.append(nu_zero.numpy())
+    self.lam_values.append((self._norm_regularizer * self._lam).numpy())
+    self.dual_step_values.append(dual_step.numpy())
+    self.constraint_values.append(constraint.numpy())
+    self.preg_values.append((self._primal_regularizer * f_nu).numpy())
+    self.dreg_values.append((self._dual_regularizer * f_zeta).numpy())
+    self.lagrangian_values.append(lagrangian.numpy())
+    self.overall_values.append(overall.numpy())
+    # print("STEPS: ", self.steps)
+    # print("NU_ZERO: ", self.nu_zero_values)
+    # print("LAM: ", self.lam_values)
+    # print("DUAL_STEP: ", self.dual_step_values)
+    # print("CONSTRAINT: ", self.constraint_values)
+    # print("PREG: ", self.preg_values)
+    # print("DREG: ", self.dreg_values)
+    # print("LAGRANGIAN: ", self.lagrangian_values)
+    # print("OVERALL: ", self.overall_values)
     return dual_step
 
   def _eval_constraint_and_regs(self, dataset: dataset_lib.OffpolicyDataset,
@@ -374,3 +401,28 @@ class NeuralDice(object):
     f_zeta = tf.reduce_mean(self._f_fn(zeta_values))
 
     return constraint, f_nu, f_zeta
+
+  def plot(self):
+    print(self.overall_values)
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(self.steps, self.nu_zero_values, label='nu_zero')
+    plt.plot(self.steps, self.lam_values, label='lam')
+    plt.plot(self.steps, self.dual_step_values, label='dual_step')
+    plt.plot(self.steps, self.constraint_values, label='constraint')
+    plt.plot(self.steps, self.preg_values, label='preg')
+    plt.plot(self.steps, self.dreg_values, label='dreg')
+    plt.plot(self.steps, self.lagrangian_values, label='lagrangian')
+    plt.plot(self.steps, self.overall_values, label='overall')
+    
+    plt.xlabel('Step')
+    plt.ylabel('Values')
+    plt.title('Values over Steps')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('plot.png')
+    plt.ylim(-10, 10)
+    plt.show()
+
+
+

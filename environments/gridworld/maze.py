@@ -6,9 +6,10 @@ import tensorflow.compat.v2 as tf
 
 from gym import spaces
 from gym.utils import seeding
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import dice_rl.utils.common as common_utils
-from dice_rl.environments.gridworld.navigation import Navigation
+import utils.common as common_utils
+from environments.gridworld.navigation import Navigation
 
 
 class Maze(Navigation):
@@ -160,9 +161,11 @@ class Maze(Navigation):
     carve_passage_from(outer_wall_thickness, outer_wall_thickness)
 
   def sample_location(self, maze, rng):
+    # print("START MAZE")
     for _ in range(1000):
       x, y = rng.randint(low=1, high=self._size, size=2)
       if maze[x, y] == Maze.KEY_EMPTY:
+        # print((x, y))
         return (x, y)
     raise ValueError('Cannot sample empty location, make maze bigger?')
 
@@ -231,12 +234,11 @@ def get_bfs_sequence(env,
   start_x, start_y = observation
   target_x, target_y = env.target_location
   nav_map = env.nav_map
-
   bfs_sequence = []
   visited_points = [[None for _ in range(env.size)] for _ in range(env.size)]
   visited_points[start_x][start_y] = (start_x, start_y, 0)
   current_points = [(start_x, start_y)]
-
+  print("Current Points: ", current_points)
   found_target = False
   while current_points and not found_target:
     next_points = []
@@ -266,7 +268,7 @@ def get_bfs_sequence(env,
             include_maze_layout=include_maze_layout)
         bfs_sequence.append(xya)
         next_points.append((next_point_x, next_point_y))
-
+        # print("Taken Action: ", action)
         if next_point_x == target_x and next_point_y == target_y:
           found_target = True
 

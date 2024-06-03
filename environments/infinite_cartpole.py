@@ -18,6 +18,8 @@ from gym.envs.classic_control.cartpole import CartPoleEnv
 class InfiniteCartPole(CartPoleEnv):
 
   def step(self, action):
+    super(InfiniteCartPole, self).reset()
+    # super(InfiniteCartPole, self).render()
     obs, reward, done, info = super(InfiniteCartPole, self).step(action)
     if done:
       reward = -1.

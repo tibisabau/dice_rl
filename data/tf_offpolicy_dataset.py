@@ -26,8 +26,9 @@ from tf_agents.replay_buffers import table
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 import tensorflow_probability as tfp
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dice_rl.data.dataset import EnvStep, OffpolicyDataset, StepType
+from data.dataset import EnvStep, OffpolicyDataset, StepType
 
 EpisodeInfo = collections.namedtuple(
     'EpisodeInfo', ['episode_start_id', 'episode_end_id',
@@ -223,7 +224,7 @@ class TFOffpolicyDataset(tf.Module, OffpolicyDataset):
     if batch_size is None:
       steps = tf.nest.map_structure(lambda t: tf.squeeze(t, 0), steps)
       self._last_rows_read = tf.squeeze(self._last_rows_read, 0)
-
+    # print("STEPS: ", steps)
     return steps
 
   def _get_episodes(self, episode_ids, truncate_episode_at):

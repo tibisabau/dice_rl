@@ -33,21 +33,22 @@ from tf_agents.trajectories import policy_step
 from tf_agents.utils import nest_utils
 import tensorflow_probability as tfp
 
-from dice_rl.environments import suites
-from dice_rl.environments.infinite_cartpole import InfiniteCartPole
-from dice_rl.environments.infinite_frozenlake import InfiniteFrozenLake
-from dice_rl.environments.infinite_reacher import InfiniteReacher
-from dice_rl.environments.gridworld import navigation
-from dice_rl.environments.gridworld import maze
-from dice_rl.environments.gridworld import point_maze
-from dice_rl.environments.gridworld import taxi
-from dice_rl.environments.gridworld import tree
-from dice_rl.environments.gridworld import low_rank
-from dice_rl.environments import bandit
-from dice_rl.environments import bernoulli_bandit
-from dice_rl.environments import line
-from dice_rl.environments import contextual_bandit
-import dice_rl.utils.common as common_lib
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from environments import suites
+from environments.infinite_cartpole import InfiniteCartPole
+from environments.infinite_frozenlake import InfiniteFrozenLake
+from environments.infinite_reacher import InfiniteReacher
+from environments.gridworld import navigation
+from environments.gridworld import maze
+from environments.gridworld import point_maze
+from environments.gridworld import taxi
+from environments.gridworld import tree
+from environments.gridworld import low_rank
+from environments import bandit
+from environments import bernoulli_bandit
+from environments import line
+from environments import contextual_bandit
+import utils.common as common_lib
 
 
 def get_dqn_policy(tf_env):
@@ -75,18 +76,31 @@ def get_sac_policy(tf_env):
   return policy
 
 
+# def load_policy(policy, env_name, load_dir, ckpt_file=None):
+#   policy = greedy_policy.GreedyPolicy(policy)
+#   checkpoint = tf.train.Checkpoint(policy=policy)
+#   if ckpt_file is None:
+#     checkpoint_filename = tf.train.latest_checkpoint(load_dir)
+#   else:
+#     checkpoint_filename = os.path.join(load_dir, ckpt_file)
+#   print('Loading policy from %s.' % checkpoint_filename)
+#   checkpoint.restore(checkpoint_filename).assert_existing_objects_matched()
+#   # Unwrap greedy wrapper.
+#   return policy.wrapped_policy
 def load_policy(policy, env_name, load_dir, ckpt_file=None):
   policy = greedy_policy.GreedyPolicy(policy)
   checkpoint = tf.train.Checkpoint(policy=policy)
   if ckpt_file is None:
     checkpoint_filename = tf.train.latest_checkpoint(load_dir)
+    checkpoint_filepath = checkpoint.save(file_prefix=os.path.join(load_dir, 'policy_checkpoint'))
+    # Save the latest checkpoint filename.
+    print('Latest checkpoint: %s' % checkpoint_filename)
   else:
-    checkpoint_filename = os.path.join(load_dir, ckpt_file)
-  print('Loading policy from %s.' % checkpoint_filename)
-  checkpoint.restore(checkpoint_filename).assert_existing_objects_matched()
+    checkpoint_filepath = os.path.join(load_dir, ckpt_file)
+  # print('Loading policy from %s.' % checkpoint_filename)
+  checkpoint.restore(checkpoint_filepath).assert_existing_objects_matched()
   # Unwrap greedy wrapper.
   return policy.wrapped_policy
-
 
 def get_env_and_dqn_policy(env_name,
                            load_dir,
@@ -105,6 +119,7 @@ def get_env_and_dqn_policy(env_name,
 def get_env_and_policy(load_dir,
                        env_name,
                        alpha,
+                      #  distribution,
                        env_seed=0,
                        tabular_obs=False):
   if env_name == 'taxi':
@@ -120,7 +135,9 @@ def get_env_and_policy(load_dir,
         policy_info_spec,
         emit_log_probability=True)
   elif env_name == 'grid':
+    # env = navigation.GridWalk(distribution, tabular_obs=tabular_obs)
     env = navigation.GridWalk(tabular_obs=tabular_obs)
+
     env.seed(env_seed)
     policy_fn, policy_info_spec = navigation.get_navigation_policy(
         env, epsilon_explore=0.1 + 0.6 * (1 - alpha), py=False)
@@ -158,6 +175,7 @@ def get_env_and_policy(load_dir,
         policy_fn,
         policy_info_spec,
         emit_log_probability=True)
+    # tf_env.render()
   elif env_name == 'point_maze':
     env = point_maze.PointMaze(tabular_obs=tabular_obs)
     env.seed(env_seed)
@@ -316,8 +334,12 @@ def get_env_and_policy(load_dir,
   return tf_env, policy
 
 
+# def get_target_policy(load_dir, env_name, distribution, tabular_obs, alpha=1.0):
 def get_target_policy(load_dir, env_name, tabular_obs, alpha=1.0):
+
   """Gets target policy."""
+  # tf_env, tf_policy = get_env_and_policy(
+  #     load_dir, env_name, alpha, distribution, tabular_obs=tabular_obs)
   tf_env, tf_policy = get_env_and_policy(
       load_dir, env_name, alpha, tabular_obs=tabular_obs)
   return tf_policy

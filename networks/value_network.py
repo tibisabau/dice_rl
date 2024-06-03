@@ -17,7 +17,7 @@ import tensorflow.compat.v2 as tf
 from tf_agents.networks import network
 from tf_agents.networks import utils
 
-import dice_rl.utils.common as common_lib
+import utils.common as common_lib
 
 
 class ValueNetwork(network.Network):

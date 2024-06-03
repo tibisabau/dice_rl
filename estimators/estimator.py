@@ -20,9 +20,10 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple, Union
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dice_rl.data.dataset import Dataset, EnvStep, OffpolicyDataset, OnpolicyDataset, StepType
-from dice_rl.utils import common as common_lib
+from data.dataset import Dataset, EnvStep, OffpolicyDataset, OnpolicyDataset, StepType
+from utils import common as common_lib
 
 
 def _default_by_steps_reward_fn(env_step):
@@ -160,11 +161,13 @@ def get_fullbatch_average(dataset: OffpolicyDataset,
 
   if by_steps:
     steps = dataset.get_all_steps(limit=limit)
+    # print("STEPS: ", steps)
     rewards = reward_fn(steps)
     weights = weight_fn(steps)
   else:
     episodes, valid_steps = dataset.get_all_episodes(
         truncate_episode_at=truncate_episode_at, limit=limit)
+    # print("EPISODES: ", episodes)
     rewards = reward_fn(episodes, valid_steps)
     weights = weight_fn(episodes, valid_steps)
 

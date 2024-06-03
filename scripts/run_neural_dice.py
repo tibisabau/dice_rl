@@ -28,17 +28,18 @@ import pickle
 
 from tf_agents.environments import gym_wrapper
 from tf_agents.environments import tf_py_environment
-
-from dice_rl.environments.env_policies import get_target_policy
-import dice_rl.environments.gridworld.navigation as navigation
-import dice_rl.environments.gridworld.tree as tree
-import dice_rl.environments.gridworld.taxi as taxi
-from dice_rl.estimators.neural_dice import NeuralDice
-from dice_rl.estimators import estimator as estimator_lib
-from dice_rl.networks.value_network import ValueNetwork
-import dice_rl.utils.common as common_utils
-from dice_rl.data.dataset import Dataset, EnvStep, StepType
-from dice_rl.data.tf_offpolicy_dataset import TFOffpolicyDataset
+import sys, os; sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import matplotlib.pyplot as plt
+from environments.env_policies import get_target_policy
+import environments.gridworld.navigation as navigation
+import environments.gridworld.tree as tree
+import environments.gridworld.taxi as taxi
+from estimators.neural_dice import NeuralDice
+from estimators import estimator as estimator_lib
+from networks.value_network import ValueNetwork
+import utils.common as common_utils
+from data.dataset import Dataset, EnvStep, StepType
+from data.tf_offpolicy_dataset import TFOffpolicyDataset
 
 
 FLAGS = flags.FLAGS
@@ -55,11 +56,12 @@ flags.DEFINE_integer('max_trajectory_length', 40,
                      'Cutoff trajectory at this step.')
 flags.DEFINE_float('alpha', 0.0, 'How close to target policy.')
 flags.DEFINE_float('gamma', 0.99, 'Discount factor.')
-flags.DEFINE_float('nu_learning_rate', 0.0001, 'Learning rate for nu.')
-flags.DEFINE_float('zeta_learning_rate', 0.0001, 'Learning rate for zeta.')
+flags.DEFINE_float('nu_learning_rate', 0.00003, 'Learning rate for nu.')
+flags.DEFINE_float('zeta_learning_rate', 0.00003, 'Learning rate for zeta.')
 flags.DEFINE_float('nu_regularizer', 0.0, 'Ortho regularization on nu.')
 flags.DEFINE_float('zeta_regularizer', 0.0, 'Ortho regularization on zeta.')
-flags.DEFINE_integer('num_steps', 100000, 'Number of training steps.')
+flags.DEFINE_integer('num_steps', 10000, 'Number of training steps.')
+# flags.DEFINE_integer('num_steps', 100000, 'Number of training steps.')
 flags.DEFINE_integer('batch_size', 2048, 'Batch size.')
 
 flags.DEFINE_float('f_exponent', 2, 'Exponent for f function.')
@@ -80,13 +82,14 @@ flags.DEFINE_float('shift_reward', 0., 'Reward shift factor.')
 flags.DEFINE_string(
     'transform_reward', None, 'Non-linear reward transformation'
     'One of [exp, cuberoot, None]')
-
+# flags.DEFINE_string('distribution', None, 'Probability distribution.')
 
 def main(argv):
   load_dir = FLAGS.load_dir
   save_dir = FLAGS.save_dir
   env_name = FLAGS.env_name
   seed = FLAGS.seed
+  # distribution = FLAGS.distribution
   tabular_obs = FLAGS.tabular_obs
   num_trajectory = FLAGS.num_trajectory
   max_trajectory_length = FLAGS.max_trajectory_length
@@ -111,7 +114,8 @@ def main(argv):
   scale_reward = FLAGS.scale_reward
   shift_reward = FLAGS.shift_reward
   transform_reward = FLAGS.transform_reward
-
+  true = []
+  estimate_step = []
   def reward_fn(env_step):
     reward = env_step.reward * scale_reward + shift_reward
     if transform_reward is None:
@@ -158,6 +162,8 @@ def main(argv):
   directory = os.path.join(load_dir, hparam_str)
   print('Loading dataset from', directory)
   dataset = Dataset.load(directory)
+  # with open('far_d.pkl', 'rb') as f:
+  #   dataset = pickle.load(f)
   all_steps = dataset.get_all_steps()
   max_reward = tf.reduce_max(all_steps.reward)
   min_reward = tf.reduce_min(all_steps.reward)
@@ -217,9 +223,13 @@ def main(argv):
   global_step = tf.Variable(0, dtype=tf.int64)
   tf.summary.experimental.set_step(global_step)
 
+  # target_policy = get_target_policy(load_dir, env_name, distribution, tabular_obs)
   target_policy = get_target_policy(load_dir, env_name, tabular_obs)
+
   running_losses = []
   running_estimates = []
+  steps = []
+  true_value = estimator_lib.get_fullbatch_average(target_dataset, gamma=1.)
   for step in range(num_steps):
     transitions_batch = dataset.get_step(batch_size, num_steps=2)
     initial_steps_batch, _ = dataset.get_episode(
@@ -231,12 +241,30 @@ def main(argv):
     running_losses.append(losses)
     if step % 500 == 0 or step == num_steps - 1:
       estimate = estimator.estimate_average_reward(dataset, target_policy)
+      true.append(true_value)
       running_estimates.append(estimate)
+      steps.append(step)
       running_losses = []
     global_step.assign_add(1)
 
   print('Done!')
-
+  dict = {
+    'steps': steps, 
+    'running_estimates': running_estimates, 
+    'true': true
+  }
+  with open('running_estimates_test_d.pkl', 'wb') as f:
+    pickle.dump({'dict': dict}, f)
+  # plt.figure(figsize=(10, 5))
+  # plt.plot(steps, running_estimates, label='Running Estimates', marker='o')
+  # plt.plot(steps, true, label='True Value', marker='x')
+  # plt.xlabel('Steps')
+  # plt.ylabel('Value')
+  # plt.title('Running Estimates vs True Value Over Steps')
+  # plt.legend()
+  # plt.grid(True)
+  # plt.savefig('plot_edge.png')
+  # plt.show()
 
 if __name__ == '__main__':
   app.run(main)
