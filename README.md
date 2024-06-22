@@ -44,3 +44,13 @@ To recover GenDICE, append the following to the above python command:
 The configuration below generally works the best:
 
     --primal_regularizer=0. --dual_regularizer=1. --zero_reward=0 --norm_regularizer=1. --zeta_pos=1
+
+## Run Initial Start Distribution Mismatch Experiment
+
+Run general script to create datasets and plot:
+
+    python3 scripts/create_probabilities.py
+
+After datasets are created, the plots can be (re)created using:
+
+    python3 scripts/plot.py

@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+########################################################################
+
+# In this file, the changes include the reduction of the training process from 100000 steps
+# to 25000, along with the batch size from 2048 to 512. The per-step reward is taken every 250
+# instead of every 500. Then the target policy dataset file path was changed to include the start 
+# distribution seed of the target policy. The per-step rewards are saved to be used in the plots.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -60,10 +67,8 @@ flags.DEFINE_float('nu_learning_rate', 0.00003, 'Learning rate for nu.')
 flags.DEFINE_float('zeta_learning_rate', 0.00003, 'Learning rate for zeta.')
 flags.DEFINE_float('nu_regularizer', 0.0, 'Ortho regularization on nu.')
 flags.DEFINE_float('zeta_regularizer', 0.0, 'Ortho regularization on zeta.')
-flags.DEFINE_integer('num_steps', 10000, 'Number of training steps.')
-# flags.DEFINE_integer('num_steps', 100000, 'Number of training steps.')
-flags.DEFINE_integer('batch_size', 2048, 'Batch size.')
-
+flags.DEFINE_integer('num_steps', 25000, 'Number of training steps.')
+flags.DEFINE_integer('batch_size', 512, 'Batch size.')
 flags.DEFINE_float('f_exponent', 2, 'Exponent for f function.')
 flags.DEFINE_bool('primal_form', False,
                   'Whether to use primal form of loss for nu.')
@@ -82,14 +87,14 @@ flags.DEFINE_float('shift_reward', 0., 'Reward shift factor.')
 flags.DEFINE_string(
     'transform_reward', None, 'Non-linear reward transformation'
     'One of [exp, cuberoot, None]')
-# flags.DEFINE_string('distribution', None, 'Probability distribution.')
+flags.DEFINE_integer('distribution', None, 'Probability distribution.')
 
 def main(argv):
   load_dir = FLAGS.load_dir
   save_dir = FLAGS.save_dir
   env_name = FLAGS.env_name
   seed = FLAGS.seed
-  # distribution = FLAGS.distribution
+  distribution = FLAGS.distribution
   tabular_obs = FLAGS.tabular_obs
   num_trajectory = FLAGS.num_trajectory
   max_trajectory_length = FLAGS.max_trajectory_length
@@ -115,7 +120,6 @@ def main(argv):
   shift_reward = FLAGS.shift_reward
   transform_reward = FLAGS.transform_reward
   true = []
-  estimate_step = []
   def reward_fn(env_step):
     reward = env_step.reward * scale_reward + shift_reward
     if transform_reward is None:
@@ -129,13 +133,24 @@ def main(argv):
     return reward
 
   hparam_str = ('{ENV_NAME}_tabular{TAB}_alpha{ALPHA}_seed{SEED}_'
-                'numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                'distribution{DIST}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
                     ENV_NAME=env_name,
                     TAB=tabular_obs,
                     ALPHA=alpha,
                     SEED=seed,
+                    DIST=distribution,
                     NUM_TRAJ=num_trajectory,
                     MAX_TRAJ=max_trajectory_length)
+  target_hparam_str = ('{ENV_NAME}_tabular{TAB}_alpha{ALPHA}_seed{SEED}_'
+                'distribution{DIST}_numtraj{NUM_TRAJ}_maxtraj{MAX_TRAJ}').format(
+                    ENV_NAME=env_name,
+                    TAB=tabular_obs,
+                    ALPHA=1.0,
+                    SEED=seed,
+                    DIST=7,
+                    NUM_TRAJ=num_trajectory,
+                    MAX_TRAJ=max_trajectory_length)
+  
   train_hparam_str = (
       'nlr{NLR}_zlr{ZLR}_zeror{ZEROR}_preg{PREG}_dreg{DREG}_nreg{NREG}_'
       'pform{PFORM}_fexp{FEXP}_zpos{ZPOS}_'
@@ -160,10 +175,11 @@ def main(argv):
     tf.summary.create_noop_writer()
 
   directory = os.path.join(load_dir, hparam_str)
+  target_directory = os.path.join(load_dir, target_hparam_str)
+
   print('Loading dataset from', directory)
   dataset = Dataset.load(directory)
-  # with open('far_d.pkl', 'rb') as f:
-  #   dataset = pickle.load(f)
+
   all_steps = dataset.get_all_steps()
   max_reward = tf.reduce_max(all_steps.reward)
   min_reward = tf.reduce_min(all_steps.reward)
@@ -174,10 +190,8 @@ def main(argv):
   print('min reward', min_reward, 'max reward', max_reward)
   print('behavior per-step',
         estimator_lib.get_fullbatch_average(dataset, gamma=gamma))
-  target_dataset = Dataset.load(
-      directory.replace('alpha{}'.format(alpha), 'alpha1.0'))
-  print('target per-step',
-        estimator_lib.get_fullbatch_average(target_dataset, gamma=1.))
+  
+  target_dataset = Dataset.load(target_directory)
 
   activation_fn = tf.nn.relu
   kernel_initializer = tf.keras.initializers.GlorotUniform()
@@ -218,28 +232,31 @@ def main(argv):
       dual_regularizer=dual_regularizer,
       norm_regularizer=norm_regularizer,
       nu_regularizer=nu_regularizer,
-      zeta_regularizer=zeta_regularizer)
+      zeta_regularizer=zeta_regularizer,
+      )
 
   global_step = tf.Variable(0, dtype=tf.int64)
   tf.summary.experimental.set_step(global_step)
 
-  # target_policy = get_target_policy(load_dir, env_name, distribution, tabular_obs)
-  target_policy = get_target_policy(load_dir, env_name, tabular_obs)
-
+  target_policy = get_target_policy(load_dir, env_name, distribution, tabular_obs)
+  
   running_losses = []
   running_estimates = []
   steps = []
   true_value = estimator_lib.get_fullbatch_average(target_dataset, gamma=1.)
+  print("True: ", true_value)
   for step in range(num_steps):
     transitions_batch = dataset.get_step(batch_size, num_steps=2)
     initial_steps_batch, _ = dataset.get_episode(
         batch_size, truncate_episode_at=1)
     initial_steps_batch = tf.nest.map_structure(lambda t: t[:, 0, ...],
                                                 initial_steps_batch)
+
     losses = estimator.train_step(initial_steps_batch, transitions_batch,
                                   target_policy)
+  
     running_losses.append(losses)
-    if step % 500 == 0 or step == num_steps - 1:
+    if step % 250 == 0 or step == num_steps - 1:
       estimate = estimator.estimate_average_reward(dataset, target_policy)
       true.append(true_value)
       running_estimates.append(estimate)
@@ -253,18 +270,8 @@ def main(argv):
     'running_estimates': running_estimates, 
     'true': true
   }
-  with open('running_estimates_test_d.pkl', 'wb') as f:
+  with open('running_estimates.pkl', 'wb') as f:
     pickle.dump({'dict': dict}, f)
-  # plt.figure(figsize=(10, 5))
-  # plt.plot(steps, running_estimates, label='Running Estimates', marker='o')
-  # plt.plot(steps, true, label='True Value', marker='x')
-  # plt.xlabel('Steps')
-  # plt.ylabel('Value')
-  # plt.title('Running Estimates vs True Value Over Steps')
-  # plt.legend()
-  # plt.grid(True)
-  # plt.savefig('plot_edge.png')
-  # plt.show()
 
 if __name__ == '__main__':
   app.run(main)

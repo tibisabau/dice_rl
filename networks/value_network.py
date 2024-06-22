@@ -16,7 +16,7 @@ import tensorflow.compat.v2 as tf
 
 from tf_agents.networks import network
 from tf_agents.networks import utils
-
+import numpy as np
 import utils.common as common_lib
 
 
@@ -80,7 +80,7 @@ class ValueNetwork(network.Network):
             activation=output_activation_fn,
             kernel_initializer=last_kernel_initializer,
             name='value'))
-
+   
   def call(self, inputs, step_type=(), network_state=(), training=False):
     flat_inputs = tf.nest.flatten(inputs)
     del step_type  # unused.

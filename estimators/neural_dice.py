@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v2 as tf
 from tf_agents.specs import tensor_spec
@@ -105,7 +104,6 @@ class NeuralDice(object):
     self._nu_regularizer = nu_regularizer
     self._zeta_regularizer = zeta_regularizer
     self._weight_by_gamma = weight_by_gamma
-
     self._gamma = gamma
     if reward_fn is None:
       reward_fn = lambda env_step: env_step.reward
@@ -140,6 +138,9 @@ class NeuralDice(object):
     pass
 
   def _get_value(self, network, env_step):
+    # np.random.seed(2)
+    # tf.random.set_seed(2)
+    # tf.print(env_step.observation)
     if self._solve_for_state_action_ratio:
       return network((env_step.observation, env_step.action))[0]
     else:
@@ -196,7 +197,6 @@ class NeuralDice(object):
                                              policy)
 
     zeta_values = self._get_value(self._zeta_network, env_step)
-
     discounts = self._gamma * next_env_step.discount
     policy_ratio = 1.0
     if not self._solve_for_state_action_ratio:
@@ -230,54 +230,47 @@ class NeuralDice(object):
       weights /= 1e-6 + tf.reduce_mean(weights)
       nu_loss *= weights
       zeta_loss *= weights
-
     return nu_loss, zeta_loss, lam_loss
-
   @tf.function
   def train_step(self, initial_env_step: dataset_lib.EnvStep,
-                 experience: dataset_lib.EnvStep,
-                 target_policy: tf_policy.TFPolicy):
-    """Performs a single training step based on batch.
+                  experience: dataset_lib.EnvStep,
+                  target_policy: tf_policy.TFPolicy):
+      """Performs a single training step based on batch.
 
-    Args:
-      initial_env_step: A batch of initial steps.
-      experience: A batch of transitions. Elements must have shape [batch_size,
-        2, ...].
-      target_policy: The policy whose value we want to estimate.
+      Args:
+        initial_env_step: A batch of initial steps.
+        experience: A batch of transitions. Elements must have shape [batch_size,
+          2, ...].
+        target_policy: The policy whose value we want to estimate.
 
-    Returns:
-      The losses and the train op.
-    """
-    env_step = tf.nest.map_structure(lambda t: t[:, 0, ...], experience)
-    next_env_step = tf.nest.map_structure(lambda t: t[:, 1, ...], experience)
+      Returns:
+        The losses and the train op.
+      """
+      env_step = tf.nest.map_structure(lambda t: t[:, 0, ...], experience)
+      next_env_step = tf.nest.map_structure(lambda t: t[:, 1, ...], experience)
 
-    with tf.GradientTape(
-        watch_accessed_variables=False, persistent=True) as tape:
-      tape.watch(self._nu_network.variables)
-      tape.watch(self._zeta_network.variables)
-      tape.watch([self._lam])
-      nu_loss, zeta_loss, lam_loss = self.train_loss(initial_env_step, env_step,
-                                                     next_env_step,
-                                                     target_policy)
-      nu_loss += self._nu_regularizer * self._orthogonal_regularization(
-          self._nu_network)
-      zeta_loss += self._zeta_regularizer * self._orthogonal_regularization(
-          self._zeta_network)
+      with tf.GradientTape(watch_accessed_variables=False, persistent=True) as tape:
+          tape.watch(self._nu_network.variables)
+          tape.watch(self._zeta_network.variables)
+          tape.watch([self._lam])
+          nu_loss, zeta_loss, lam_loss = self.train_loss(
+              initial_env_step, env_step, next_env_step, target_policy)
+          nu_loss += self._nu_regularizer * self._orthogonal_regularization(self._nu_network)
+          zeta_loss += self._zeta_regularizer * self._orthogonal_regularization(self._zeta_network)
+      nu_grads = tape.gradient(nu_loss, self._nu_network.variables)
+      nu_grad_op = self._nu_optimizer.apply_gradients(
+          zip(nu_grads, self._nu_network.variables))
 
-    nu_grads = tape.gradient(nu_loss, self._nu_network.variables)
-    nu_grad_op = self._nu_optimizer.apply_gradients(
-        zip(nu_grads, self._nu_network.variables))
+      zeta_grads = tape.gradient(zeta_loss, self._zeta_network.variables)
+      zeta_grad_op = self._zeta_optimizer.apply_gradients(
+          zip(zeta_grads, self._zeta_network.variables))
 
-    zeta_grads = tape.gradient(zeta_loss, self._zeta_network.variables)
-    zeta_grad_op = self._zeta_optimizer.apply_gradients(
-        zip(zeta_grads, self._zeta_network.variables))
+      lam_grads = tape.gradient(lam_loss, [self._lam])
+      lam_grad_op = self._lam_optimizer.apply_gradients(
+          zip(lam_grads, [self._lam]))
 
-    lam_grads = tape.gradient(lam_loss, [self._lam])
-    lam_grad_op = self._lam_optimizer.apply_gradients(
-        zip(lam_grads, [self._lam]))
-
-    return (tf.reduce_mean(nu_loss), tf.reduce_mean(zeta_loss),
-            tf.reduce_mean(lam_loss))
+      return (tf.reduce_mean(nu_loss), tf.reduce_mean(zeta_loss),
+              tf.reduce_mean(lam_loss))
 
   def estimate_average_reward(self, dataset: dataset_lib.OffpolicyDataset,
                               target_policy: tf_policy.TFPolicy):
@@ -300,7 +293,6 @@ class NeuralDice(object):
             tfagents_timestep).action.log_prob(env_step.action)
         policy_ratio = tf.exp(target_log_probabilities -
                               env_step.get_log_probability())
-      print("ZETA: ", zeta * common_lib.reverse_broadcast(policy_ratio, zeta))
       return zeta * common_lib.reverse_broadcast(policy_ratio, zeta)
 
     def init_nu_fn(env_step, valid_steps):
@@ -349,24 +341,6 @@ class NeuralDice(object):
              self._primal_regularizer * f_nu, 'dreg =',
              self._dual_regularizer * f_zeta, 'lagrangian =', lagrangian,
              'overall =', overall)
-    self.steps.append(tf.summary.experimental.get_step().numpy())
-    self.nu_zero_values.append(nu_zero.numpy())
-    self.lam_values.append((self._norm_regularizer * self._lam).numpy())
-    self.dual_step_values.append(dual_step.numpy())
-    self.constraint_values.append(constraint.numpy())
-    self.preg_values.append((self._primal_regularizer * f_nu).numpy())
-    self.dreg_values.append((self._dual_regularizer * f_zeta).numpy())
-    self.lagrangian_values.append(lagrangian.numpy())
-    self.overall_values.append(overall.numpy())
-    # print("STEPS: ", self.steps)
-    # print("NU_ZERO: ", self.nu_zero_values)
-    # print("LAM: ", self.lam_values)
-    # print("DUAL_STEP: ", self.dual_step_values)
-    # print("CONSTRAINT: ", self.constraint_values)
-    # print("PREG: ", self.preg_values)
-    # print("DREG: ", self.dreg_values)
-    # print("LAGRANGIAN: ", self.lagrangian_values)
-    # print("OVERALL: ", self.overall_values)
     return dual_step
 
   def _eval_constraint_and_regs(self, dataset: dataset_lib.OffpolicyDataset,
@@ -401,28 +375,6 @@ class NeuralDice(object):
     f_zeta = tf.reduce_mean(self._f_fn(zeta_values))
 
     return constraint, f_nu, f_zeta
-
-  def plot(self):
-    print(self.overall_values)
-    plt.figure(figsize=(10, 6))
-
-    plt.plot(self.steps, self.nu_zero_values, label='nu_zero')
-    plt.plot(self.steps, self.lam_values, label='lam')
-    plt.plot(self.steps, self.dual_step_values, label='dual_step')
-    plt.plot(self.steps, self.constraint_values, label='constraint')
-    plt.plot(self.steps, self.preg_values, label='preg')
-    plt.plot(self.steps, self.dreg_values, label='dreg')
-    plt.plot(self.steps, self.lagrangian_values, label='lagrangian')
-    plt.plot(self.steps, self.overall_values, label='overall')
-    
-    plt.xlabel('Step')
-    plt.ylabel('Values')
-    plt.title('Values over Steps')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig('plot.png')
-    plt.ylim(-10, 10)
-    plt.show()
 
 
 

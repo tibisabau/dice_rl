@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+########################################################################
+
+# Here, the only change from the original codebase is the addition of the 
+# "distribution"parameter to various methods, to be able to pass it to the 
+# environment, when creating datasets.
+
 import functools
 import os
 import logging
@@ -119,7 +125,7 @@ def get_env_and_dqn_policy(env_name,
 def get_env_and_policy(load_dir,
                        env_name,
                        alpha,
-                      #  distribution,
+                       distribution,
                        env_seed=0,
                        tabular_obs=False):
   if env_name == 'taxi':
@@ -135,8 +141,7 @@ def get_env_and_policy(load_dir,
         policy_info_spec,
         emit_log_probability=True)
   elif env_name == 'grid':
-    # env = navigation.GridWalk(distribution, tabular_obs=tabular_obs)
-    env = navigation.GridWalk(tabular_obs=tabular_obs)
+    env = navigation.GridWalk(distribution, tabular_obs=tabular_obs)
 
     env.seed(env_seed)
     policy_fn, policy_info_spec = navigation.get_navigation_policy(
@@ -148,6 +153,7 @@ def get_env_and_policy(load_dir,
         policy_fn,
         policy_info_spec,
         emit_log_probability=True)
+      
   elif env_name == 'four_rooms':
     env = navigation.FourRooms(tabular_obs=tabular_obs)
     env.seed(env_seed)
@@ -334,14 +340,10 @@ def get_env_and_policy(load_dir,
   return tf_env, policy
 
 
-# def get_target_policy(load_dir, env_name, distribution, tabular_obs, alpha=1.0):
-def get_target_policy(load_dir, env_name, tabular_obs, alpha=1.0):
-
+def get_target_policy(load_dir, env_name, distribution, tabular_obs, alpha=1.0):
   """Gets target policy."""
-  # tf_env, tf_policy = get_env_and_policy(
-  #     load_dir, env_name, alpha, distribution, tabular_obs=tabular_obs)
   tf_env, tf_policy = get_env_and_policy(
-      load_dir, env_name, alpha, tabular_obs=tabular_obs)
+      load_dir, env_name, alpha, distribution, tabular_obs=tabular_obs)
   return tf_policy
 
 

@@ -165,7 +165,6 @@ class Maze(Navigation):
     for _ in range(1000):
       x, y = rng.randint(low=1, high=self._size, size=2)
       if maze[x, y] == Maze.KEY_EMPTY:
-        # print((x, y))
         return (x, y)
     raise ValueError('Cannot sample empty location, make maze bigger?')
 
@@ -268,7 +267,6 @@ def get_bfs_sequence(env,
             include_maze_layout=include_maze_layout)
         bfs_sequence.append(xya)
         next_points.append((next_point_x, next_point_y))
-        # print("Taken Action: ", action)
         if next_point_x == target_x and next_point_y == target_y:
           found_target = True
 
